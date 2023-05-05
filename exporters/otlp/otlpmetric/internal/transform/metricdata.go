@@ -138,6 +138,7 @@ func DataPoints[N int64 | float64](dPts []metricdata.DataPoint[N]) []*mpb.Number
 			Attributes:        AttrIter(dPt.Attributes.Iter()),
 			StartTimeUnixNano: uint64(dPt.StartTime.UnixNano()),
 			TimeUnixNano:      uint64(dPt.Time.UnixNano()),
+			Exemplars:         Exemplars(dPt.Exemplars),
 		}
 		switch v := any(dPt.Value).(type) {
 		case int64:
@@ -152,6 +153,37 @@ func DataPoints[N int64 | float64](dPts []metricdata.DataPoint[N]) []*mpb.Number
 		out = append(out, ndp)
 	}
 	return out
+}
+
+func Exemplars[N int64 | float64](exemplars []metricdata.Exemplar[N]) []*mpb.Exemplar {
+	out := make([]*mpb.Exemplar, 0, len(exemplars))
+	for _, e := range exemplars {
+		out = append(out, Exemplar(e))
+	}
+	return out
+}
+
+// Adds exemplar support to Go instrumentation sdk. The specifcation for
+// exemplars is not stable yet thus the upstream project has delayed adding
+// this feature for fear of breaking backwards compatibility when it is added.
+// https://github.com/open-telemetry/opentelemetry-go/issues/559
+func Exemplar[N int64 | float64](e metricdata.Exemplar[N]) *mpb.Exemplar {
+	epb := mpb.Exemplar{
+		TimeUnixNano: uint64(e.Time.UnixNano()),
+		SpanId:       e.SpanID[:],
+		TraceId:      e.TraceID[:],
+		// TODO: FilteredAttributes is not of type attribute.Set. From other attribute collections it looks
+		// like it should be.
+		//FilteredAttributes: AttrIter(e.FilteredAttributes.Iter()),
+	}
+	switch v := any(e.Value).(type) {
+	case int64:
+		epb.Value = &mpb.Exemplar_AsInt{AsInt: v}
+	case float64:
+		epb.Value = &mpb.Exemplar_AsDouble{AsDouble: v}
+	}
+
+	return &epb
 }
 
 // Histogram returns an OTLP Metric_Histogram generated from h. An error is
